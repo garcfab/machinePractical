@@ -1,0 +1,104 @@
+---
+title: "Predicting weight lifting quality"
+author: "Fabián García"
+date: "October 26, 2014"
+output: html_document
+---
+
+## Cleaning data
+```{r}
+set.seed(78990)
+library(caret)
+setwd("/Users/fabian/Dropbox/Coursera/practicalMachineLearning")
+
+train <- read.csv('data/pml-training.csv')
+test <- read.csv('data/pml-testing.csv')
+```
+
+First, I eliminate the following variables containing no relevant information for the model development:
+
+1. X (row index)
+2. user_name
+3. time stamps: raw_timestamp_part_1  raw_timestamp_part_2  cvtd_timestamp
+4. new_window and num_window
+
+```{r}
+train <- train[, -c(1:7)]
+```
+
+Second, I eliminate all the columns with significant missing values:
+
+```{r}
+missing <- rep(FALSE, ncol(train))
+for (i in 1:ncol(train)) {
+        if( sum(is.na(train[,i])) > 1) {
+                missing[i] <- TRUE
+        }
+}
+summary(missing)
+train <- train[,!missing]
+```
+
+Finally, I get rid of the variables that have practically no information (no variance) and of some variables that can be redundant given the high correlation between them. After the cleaning process I end up with 22 variables.
+
+```{r}
+# First, variablew with low variances
+no_information <- nearZeroVar(train)
+train <- train[, -no_information]
+dim(train)
+
+# Second, variables with high correlations
+correlation_matrix <- cor(train[,-dim(train)[2]],)
+highlyCor <- findCorrelation(correlation_matrix, cutoff = 0.5)
+train <- train[, -highlyCor ]
+dim(train)
+```
+
+## Training the model
+
+I split the cleaned-training dataframe in two subsamples: one will be used for training the model and the other will be used for cross-validation purposes. 
+
+```{r}
+inTrain <- createDataPartition(y = train$classe, p = 0.8, list = FALSE)
+sub_training <- train[inTrain, ]  # 15699 obs. of 22 variables
+sub_testing <- train[-inTrain, ]  # 3923 obs. of 22 variables
+```
+
+I used the Random Forest algorithm to train the model:
+```{r}
+library(doMC)
+registerDoMC(cores =2)
+model_trained <- train(classe~., method = "rf", data = sub_training)
+```
+
+
+
+
+## Accuracy Assessment
+Now I measure the model accuracy in the sample of the training set that were not used to train the model
+
+```{r}
+## Applying the RF model into our subset model
+prediction_in_our_test <- predict(model_trained, newdata=sub_testing)
+## Building confussion matrix to assess accuracy
+confMat <- confusionMatrix(prediction_in_our_test, sub_testing$classe)
+confMat$table
+```
+
+```{r}
+results <- model_trained$results
+round(max(results$Accuracy), 4) * 100
+100 - round(max(results$Accuracy), 4) * 100
+````
+
+
+The model looks promising. I am getting an accuracy of 97.8% and an out-of-sample error of 2.2%. Thus, it is very likely to get a perfect prediction in the 20 test cases priveded to test my machine learning algorithm.
+
+Finally, I predict with this mode model the classes on the test set privided.
+
+```{r}
+output <- predict(model_trained , newdata = test)
+output
+````
+
+
